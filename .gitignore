@@ -1,0 +1,8 @@
+# ignore IntelliJ IDEA project files
+*.iml
+.idea/
+
+# ignore output directory
+dist/
+node_modules/
+
