@@ -1,45 +1,17 @@
-import 'dotenv/config.js'
-import axios from 'axios';
-
-import {
-  Contact,
-  Message,
-  ScanStatus,
-  WechatyBuilder,
-  log,
-} from 'wechaty'
-
+import {Contact, Message, ScanStatus, WechatyBuilder, log,} from 'wechaty'
 import qrcodeTerminal from 'qrcode-terminal'
+import * as fs from 'fs';
+import {getCaiHongPi, getTianGou} from './event/tianXiang';
+import {caiHongPiJob} from './event/scheduleEvent';
 
-// 定义接口来描述天行 API 的响应结构
-interface TianApiResponse {
-  code: number;
-  msg: string;
-  result: {
-    content: string;
-  };
-}
-
-// 获取天行 API 内容的函数
-async function getTianApiContent(): Promise<string | null> {
-  try {
-    const response = await axios.get<TianApiResponse>('https://apis.tianapi.com/caihongpi/index?key=629005819119c6f1f0221497e28cf9ed');
-    const data = response.data;
-
-    if (data && data.code === 200) {
-      return data.result.content;
-    } else {
-      throw new Error(`API error: ${data.msg}`);
-    }
-  } catch (error) {
-    console.error(`Error fetching content from Tian API: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    return null;
-  }
-}
-
-// 捕捉 扫码事件
 function onScan(qrcode: string, status: ScanStatus) {
   if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
+    // 将url 写入 ./wechatLoginEnv.sh 文件
+    const url = `https://wechaty.js.org/qrcode/${encodeURIComponent(qrcode)}`;
+    const scriptContent = `export LOGIN_URL=${url}\n`;
+    fs.writeFileSync('./wechatLoginEnv.sh', scriptContent);
+    log.info(`扫描二维码登录: ${status}\n${url}`);
+
     const qrcodeImageUrl = [
       'https://wechaty.js.org/qrcode/',
       encodeURIComponent(qrcode),
@@ -54,22 +26,33 @@ function onScan(qrcode: string, status: ScanStatus) {
 }
 
 function onLogin(user: Contact) {
-  log.info('StarterBot', '%s login', user)
+  log.info('登录：', '%s login', user)
+  caiHongPiJob(bot);
 }
 
 function onLogout(user: Contact) {
-  log.info('StarterBot', '%s logout', user)
+  log.info('登出：', '%s logout', user)
 }
 
 async function onMessage(msg: Message) {
-  log.info('StarterBot', msg.toString())
-
+  log.info('收到消息：', msg.toString())
+  const messageAgeInSeconds  = msg.age()
+  log.info('消息延迟时常(秒)：', messageAgeInSeconds)
+  const messageAgeInMinutes  = messageAgeInSeconds / 60;
+  log.info('消息延迟时常(分钟)：', messageAgeInMinutes)
+  const isSelf = msg.self()
+  log.info('消息是否自己发出：', isSelf)
+  if (isSelf || messageAgeInMinutes > 2) {
+    log.info('消息延迟超过2分钟或者自己发出，不处理')
+    return
+  }
   if (msg.text() === 'ding') {
     await msg.say('dong')
   } else if (msg.text() === 'dong') {
     await msg.say('ding')
   } else {
-    const content = await getTianApiContent();
+    const content = await getTianGou();
+    log.info('获取舔狗API 内容为：', content)
     if (content) {
       await msg.say(content);
     } else {
@@ -78,8 +61,13 @@ async function onMessage(msg: Message) {
   }
 }
 
-
+// 实例化一个 bot 对象
 const bot = WechatyBuilder.build({
+//  puppet: 'wechaty-puppet-wechat4u',
+  puppet: 'wechaty-puppet-wechat',
+  puppetOptions: {
+    uos: true
+  },
   name: 'ding-dong-bot',
 })
 

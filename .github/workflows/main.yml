@@ -1,0 +1,48 @@
+name: Build And Deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v1
+        with:
+          node-version: 18.20.2
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile TypeScript
+        run: npx tsc
+
+      - name: Deploy to server
+        uses: easingthemes/ssh-deploy@v5.0.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          SOURCE: "./"
+          EXCLUDE: "/.github/, /.vscode/, .gitignore, /.git/"
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_USER: ${{ secrets.REMOTE_USERNAME }}
+          TARGET: "/srv/hong/wechat-bot" # 目标路径 自己在服务器创建
+
+      - name: Run on remote server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USERNAME }}
+          password: ${{ secrets.REMOTE_PASSWORD }}
+          port: ${{ secrets.REMOTE_PORT }}
+          script: |
+             cd /srv/hong/wechat-bot
+             forever stopall
+             forever start dist/my-bot.js
+             sleep 10
+             source ./wechatLoginEnv.sh
+             echo "$LOGIN_URL" > /var/www/wechat-bot/wechatLogin.txt 
